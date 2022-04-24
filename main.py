@@ -2,14 +2,16 @@
 import cv2
 import numpy as np
 
-# 1.07.13
+# 1.32.53
 from Extractor import Extractor
 
 W = 1920 // 2
 H = 1080 // 2
+F = 1
+K = np.array([[F, 0, W // 2], [0, F, H // 2], [0, 0, 1]])
 
 cv2.namedWindow("image", cv2.WINDOW_NORMAL)
-fe = Extractor()
+fe = Extractor(K)
 
 
 def process_frame(img):
@@ -17,10 +19,9 @@ def process_frame(img):
     matches = fe.extract(img)
     if matches is None:
         return
-    print("Number of Matching points : ", len(matches))
     for pt1, pt2 in matches:
-        u1, v1 = map(lambda x: int(round(x)), pt1)
-        u2, v2 = map(lambda x: int(round(x)), pt2)
+        u1, v1 = fe.denormalize(pt1)
+        u2, v2 = fe.denormalize(pt2)
         # print(p.pt,"-->",u, v)
         cv2.circle(img, (u1, v1), color=(0, 255, 0), radius=3)
         cv2.line(img, (u1, v1), (u2, v2), color=(255, 0, 0))
