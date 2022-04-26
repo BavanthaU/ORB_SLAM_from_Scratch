@@ -2,12 +2,12 @@
 import cv2
 import numpy as np
 
-# 1.32.53
+# 2.18
 from Extractor import Extractor
 
 W = 1920 // 2
 H = 1080 // 2
-F = 1
+F = 270
 K = np.array([[F, 0, W // 2], [0, F, H // 2], [0, 0, 1]])
 
 cv2.namedWindow("image", cv2.WINDOW_NORMAL)
@@ -16,9 +16,10 @@ fe = Extractor(K)
 
 def process_frame(img):
     img = cv2.resize(img, (W, H))
-    matches = fe.extract(img)
-    if matches is None:
+    matches, pose = fe.extract(img)
+    if pose is None:
         return
+    print("Matches", pose)
     for pt1, pt2 in matches:
         u1, v1 = fe.denormalize(pt1)
         u2, v2 = fe.denormalize(pt2)

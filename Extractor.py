@@ -9,6 +9,9 @@ def add_ones(x):
     return np.concatenate([x, np.ones((x.shape[0], 1))], axis=1)
 
 
+f_est_avg = []
+
+
 class Extractor(object):
     def __init__(self, K):
         self.orb = cv2.ORB_create()
@@ -31,6 +34,19 @@ class Extractor(object):
         # K^(-1) * (2D pixels) = 3D point expressed with respect to the world coordinate system
         return np.dot(self.Kinv, add_ones(pts).T).T[:, 0:2]
 
+    def extractRT(self, E):
+        W = np.mat([[0, -1, 0], [1, 0, 0], [0, 0, 1]], dtype=float)
+        U, w, Vt = np.linalg.svd(E)
+        assert np.linalg.det(U) > 0
+        if np.linalg.det(Vt) > 0:
+            Vt *= -1.0
+        R = np.dot(np.dot(U, W), Vt)
+        if np.sum(R.diagonal()) < 0:
+            R = np.dot(np.dot(U, W.T), Vt)
+        t = U[:, 2]
+        Rt = np.concatenate([R, t.reshape(3,1)], axis=1)
+        return Rt
+
     def extract(self, img):
         # detecting
         feats = cv2.goodFeaturesToTrack(np.mean(img, axis=2).astype(np.uint8), 3000, qualityLevel=0.01, minDistance=3)
@@ -48,6 +64,7 @@ class Extractor(object):
                     ret.append((kp1, kp2))
 
         # filter
+        Rt = None
         if len(ret) > 0:
             ret = np.array(ret)
             print(ret.shape)
@@ -57,14 +74,17 @@ class Extractor(object):
             ret[:, 1, :] = self.normalize(ret[:, 1, :])
 
             model, inliers = ransac((ret[:, 0], ret[:, 1]),
-                                    FundamentalMatrixTransform,
+                                    # FundamentalMatrixTransform,
+                                    EssentialMatrixTransform,  # since camera is calibrated
                                     min_samples=8,
-                                    residual_threshold=1,
-                                    max_trials=100)
-            s, v, d = np.linalg.svd(model.params)
-            print(v)
+                                    # residual_threshold=1,
+                                    residual_threshold=0.005,
+                                    max_trials=200)
+
             ret = ret[inliers]
+
+            Rt = self.extractRT(model.params)
 
         # return
         self.last = {'kps': kps, 'des': des}
-        return ret
+        return ret, Rt
