@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
+from queue import Queue
+from tkinter.tix import Tree
 import cv2
 import numpy as np
 from frame import Frame, denormalize, match_frames, IRt
+import OpenGL.GL as gl
+import pangolin
+from multiprocessing import Process, Queue
+
 #4.05
 W, H = 1920 // 2,  1080 // 2
 F = 270
@@ -13,15 +19,60 @@ class Map(object):
     def __init__(self):
         self.frames = []
         self.points = []
-    
-    def display_map(self):
-        for f in self.frames:
-            print(f.id)
-            print(f.pose)
-            print()
-        # for p in points:
-        #     print(p.xyz)
+        self.state = None
+        self.q = Queue()
 
+        p = Process(target=self.viewer_thread, args=(self.q,))
+        p.daemon = True
+        p.start()
+
+    def viewer_thread(self, q):
+        self.viewer_init()
+        while 1:
+            self.viewer_refresh(q)
+
+    def viewer_init(self):
+        pangolin.CreateWindowAndBind('Main', 640, 480)
+        gl.glEnable(gl.GL_DEPTH_TEST)
+
+        self.scam = pangolin.OpenGlRenderState(
+            pangolin.ProjectionMatrix(640, 480, 420, 420, 320, 240, 0.2, 100),
+            pangolin.ModelViewLookAt(-2, 2, -2, 0, 0, 0, pangolin.AxisDirection.AxisY))
+        self.handler = pangolin.Handler3D(self.scam)
+
+        #create Intercative View in Display
+        self.dcam = pangolin.CreateDisplay()
+        self.dcam.SetBounds(0.0, 1.0, 0.0, 1.0, -640.0/480.0)
+        self.dcam.SetHandler(self.handler)
+    
+    def viewer_refresh(self, q):  
+        if self.state is None or not q.empty():
+            self.state =  q.get()     
+        #turn state into points
+        ppts = np.array([d[:3, 3] for d in self.state[0]])
+        spts = np.array(self.state[1])
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        gl.glClearColor(1.0, 1.0, 1.0, 1.0)
+        self.dcam.Activate(self.scam)
+
+        gl.glPointSize(10)
+        gl.glColor3f(1.0, 0.0, 0.0)
+        pangolin.DrawPoints(ppts)
+
+        gl.glPointSize(2)
+        gl.glColor3f(0.0, 1.0, 0.0)
+        pangolin.DrawPoints(spts)
+
+        pangolin.FinishFrame()
+
+    
+    def display(self):
+        poses, pts = [], []
+        for f in self.frames:
+            poses.append(f.pose)
+        for p in self.points:
+            pts.append(p.pt)
+        self.q.put((poses, pts))
 
 
 #classes
@@ -31,7 +82,7 @@ mapp = Map()
 class Point(object):
     #3D point in world
     def __init__(self, mapp, loc):
-        self.xyz = loc
+        self.pt = loc
         self.frames = []
         self.idxs = []
 
@@ -84,7 +135,7 @@ def process_frame(img):
     cv2.waitKey(1)
 
     #3d world cordinates
-    mapp.display_map()
+    mapp.display()
 
 
 if __name__ == "__main__":
