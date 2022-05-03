@@ -5,11 +5,9 @@ from skimage.transform import FundamentalMatrixTransform
 from skimage.transform import EssentialMatrixTransform
 
 
+
 def add_ones(x):
     return np.concatenate([x, np.ones((x.shape[0], 1))], axis=1)
-
-
-f_est_avg = []
 
 
 class Extractor(object):
@@ -19,9 +17,6 @@ class Extractor(object):
         self.last = None
         self.K = K
         self.Kinv = np.linalg.inv(self.K)
-
-    # def denormalize(self, pt, shape):
-    #     return int(round(pt[0] + shape[0] // 2)), int(round(pt[1] + shape[1] // 2))
 
     # project 3D points to 2D points
     def denormalize(self, pt):
@@ -51,7 +46,7 @@ class Extractor(object):
         # detecting
         feats = cv2.goodFeaturesToTrack(np.mean(img, axis=2).astype(np.uint8), 3000, qualityLevel=0.01, minDistance=3)
         # extraction
-        kps = [cv2.KeyPoint(x=f[0][0], y=f[0][1], size=20) for f in feats]
+        kps = [cv2.KeyPoint(x=f[0][0], y=f[0][1], _size=20) for f in feats]
         kps, des = self.orb.compute(img, kps)
         # matching
         ret = []
