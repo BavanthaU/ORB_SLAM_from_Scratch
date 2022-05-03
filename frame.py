@@ -51,16 +51,21 @@ def denormalize(K, pt):
 def match_frames(f1, f2):
   bf = cv2.BFMatcher(cv2.NORM_HAMMING)
   matches = bf.knnMatch(f1.des, f2.des, k=2)
-
   # Lowe's ratio test
   ret = []
+  idx1, idx2 = [],[]
   for m,n in matches:
     if m.distance < 0.75*n.distance:
+      idx1.append(m.queryIdx)
+      idx2.append(m.trainIdx)
+
       p1 = f1.pts[m.queryIdx]
       p2 = f2.pts[m.trainIdx]
       ret.append((p1, p2))
   assert len(ret) >= 8
   ret = np.array(ret)
+  idx1 = np.array(idx1)
+  idx2 = np.array(idx2)
 
   # fit matrix
   model, inliers = ransac((ret[:, 0], ret[:, 1]),
@@ -70,21 +75,23 @@ def match_frames(f1, f2):
                           #residual_threshold=1,
                           residual_threshold=0.005,
                           max_trials=200)
-  # print(sum(inliers), len(inliers))
 
   # ignore outliers
-  ret = ret[inliers]
   Rt = extractRt(model.params)
 
   # return
-  return ret, Rt
+  return idx1[inliers], idx2[inliers], Rt
 
 class Frame(object):
-  def __init__(self, img, K):
+  def __init__(self, mapp, img, K):
     self.K = K
     self.Kinv = np.linalg.inv(self.K)
     self.pose = IRt
+
     pts, self.des = extract(img)
     self.pts = normalize(self.Kinv, pts)
+
+    self.id = len(mapp.frames)
+    mapp.frames.append(self)
 
 
