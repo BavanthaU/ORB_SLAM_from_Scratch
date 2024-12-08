@@ -44,13 +44,16 @@ class Extractor(object):
 
     def extract(self, img):
         # detecting
-        feats = cv2.goodFeaturesToTrack(np.mean(img, axis=2).astype(np.uint8), 3000, qualityLevel=0.01, minDistance=3)
+        feats = cv2.goodFeaturesToTrack(np.mean(img, axis=2).astype(np.uint8), 3000, qualityLevel=0.01, minDistance=7)
         # extraction
         kps = [cv2.KeyPoint(x=f[0][0], y=f[0][1], _size=20) for f in feats]
         kps, des = self.orb.compute(img, kps)
         # matching
         ret = []
         if self.last is not None:
+        # Lowe test
+        # retaining only those where the distance of the best match is less than 0.75 times the distance of the second-best match. 
+        # The coordinates of the matched keypoints from both images are then appended to the 'ret' list.
             matches = self.bf.knnMatch(des, self.last['des'], k=2)
             for m, n in matches:
                 if m.distance < 0.75 * n.distance:
@@ -67,7 +70,27 @@ class Extractor(object):
             # 2D points to 3D points expressed w.r.t. to world coordinates
             ret[:, 0, :] = self.normalize(ret[:, 0, :])
             ret[:, 1, :] = self.normalize(ret[:, 1, :])
+            # Fundamental Matrix vs. Essential Matrix:
+            # ----------------------------------------
+            # Fundamental Matrix (F):
+            # - Encodes the epipolar geometry between two uncalibrated camera views.
+            # - Relates corresponding points in the two images (pixel coordinates).
+            # - Works without knowing the cameras' intrinsic parameters (e.g., focal length).
+            # - Equation: x2.T * F * x1 = 0, where x1 and x2 are image points in pixels.
+            # - Defines the epipolar lines in the second image for a point in the first.
 
+            # Essential Matrix (E):
+            # - Encodes the epipolar geometry for calibrated cameras.
+            # - Relates corresponding points in normalized image coordinates.
+            # - Requires knowledge of the cameras' intrinsic parameters.
+            # - Encodes the relative rotation (R) and translation (T) between cameras:
+            #   E = R * [T]_x (where [T]_x is the skew-symmetric matrix of translation vector T).
+            # - Equation: x2.T * E * x1 = 0, where x1 and x2 are normalized coordinates.
+
+            # Key Differences:
+            # - Fundamental matrix works with uncalibrated cameras, while the essential matrix assumes calibrated cameras.
+            # - Fundamental matrix uses raw pixel coordinates, while the essential matrix uses normalized coordinates.
+            # - The essential matrix explicitly encodes the relative motion (rotation and translation) between the two cameras.
             model, inliers = ransac((ret[:, 0], ret[:, 1]),
                                     # FundamentalMatrixTransform,
                                     EssentialMatrixTransform,  # since camera is calibrated
