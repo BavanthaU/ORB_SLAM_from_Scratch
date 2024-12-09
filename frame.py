@@ -5,16 +5,16 @@ np.set_printoptions(suppress=True)
 
 from skimage.measure import ransac
 from skimage.transform import EssentialMatrixTransform
-
+from skimage.transform import FundamentalMatrixTransform
 IRt= np.eye(4)
 
 # turn [[x,y]] -> [[x,y,1]]
 def add_ones(x):
   return np.concatenate([x, np.ones((x.shape[0], 1))], axis=1)
 
-def extractRt(E):
+def extractRt(F):
   W = np.mat([[0,-1,0],[1,0,0],[0,0,1]],dtype=float)
-  U,d,Vt = np.linalg.svd(E)
+  U,d,Vt = np.linalg.svd(F)
   assert np.linalg.det(U) > 0
   if np.linalg.det(Vt) < 0:
     Vt *= -1.0
@@ -30,7 +30,7 @@ def extractRt(E):
 def extract(img):
   orb = cv2.ORB_create()
   # detection
-  pts = cv2.goodFeaturesToTrack(np.mean(img, axis=2).astype(np.uint8), 3000, qualityLevel=0.01, minDistance=7)
+  pts = cv2.goodFeaturesToTrack(np.mean(img, axis=2).astype(np.uint8), 1000, qualityLevel=0.01, minDistance=7)
 
   # extraction
   kps = [cv2.KeyPoint(x=f[0][0], y=f[0][1], size=20) for f in pts]
@@ -55,49 +55,32 @@ def match_frames(f1, f2):
   idx1, idx2 = [],[]
   for m,n in matches:
     if m.distance < 0.75*n.distance:
-      idx1.append(m.queryIdx)
-      idx2.append(m.trainIdx)
-
       p1 = f1.pts[m.queryIdx]
       p2 = f2.pts[m.trainIdx]
-      ret.append((p1, p2))
+
+      if np.linalg.norm((p1-p2)) < 0.1*np.linalg.norm([f1.w, f1.h]) and m.distance < 32:
+        # keep around indices
+        idx1.append(m.queryIdx)
+        idx2.append(m.trainIdx)
+
+        ret.append((p1, p2))
   
-  assert len(ret) >= 8
   ret = np.array(ret)
+  print(ret.shape)
+  assert ret.shape[0] >= 8, f"Not enough matches: {ret.shape[0]}"
   idx1 = np.array(idx1)
   idx2 = np.array(idx2)
-  print(ret.shape)
+  
 
-# Fundamental Matrix vs. Essential Matrix:
-# ----------------------------------------
-# Fundamental Matrix (F):
-# - Encodes the epipolar geometry between two uncalibrated camera views.
-# - Relates corresponding points in the two images (pixel coordinates).
-# - Works without knowing the cameras' intrinsic parameters (e.g., focal length).
-# - Equation: x2.T * F * x1 = 0, where x1 and x2 are image points in pixels.
-# - Defines the epipolar lines in the second image for a point in the first.
-
-# Essential Matrix (E):
-# - Encodes the epipolar geometry for calibrated cameras.
-# - Relates corresponding points in normalized image coordinates.
-# - Requires knowledge of the cameras' intrinsic parameters.
-# - Encodes the relative rotation (R) and translation (T) between cameras:
-#   E = R * [T]_x (where [T]_x is the skew-symmetric matrix of translation vector T).
-# - Equation: x2.T * E * x1 = 0, where x1 and x2 are normalized coordinates.
-
-# Key Differences:
-# - Fundamental matrix works with uncalibrated cameras, while the essential matrix assumes calibrated cameras.
-# - Fundamental matrix uses raw pixel coordinates, while the essential matrix uses normalized coordinates.
-# - The essential matrix explicitly encodes the relative motion (rotation and translation) between the two cameras.
 
   model, inliers = ransac((ret[:, 0], ret[:, 1]),
                           EssentialMatrixTransform,
-                          #FundamentalMatrixTransform,
+                          # FundamentalMatrixTransform,
                           min_samples=8,
                           # residual_threshold=1,
-                          residual_threshold=0.05,
-                          max_trials=1000)
-
+                          residual_threshold=0.01,
+                          max_trials=100)
+  print("Matches: %d -> %d -> %d -> %d" % (len(f1.des), len(matches), len(inliers), sum(inliers)))
   # ignore outliers
   Rt = extractRt(model.params)
 
@@ -109,7 +92,8 @@ class Frame(object):
     self.K = K
     self.Kinv = np.linalg.inv(self.K)
     self.pose = IRt
-
+    self.h, self.w = img.shape[0:2]
+    
     pts, self.des = extract(img)
     self.pts = normalize(self.Kinv, pts)
 

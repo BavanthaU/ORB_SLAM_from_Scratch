@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-import time
+import sys
 import cv2
 from display import Display
 from frame import Frame, denormalize, match_frames, IRt
@@ -10,7 +10,9 @@ from pointmap import Map, Point
 
 # camera intrinsics
 W, H = 1920//2, 1080//2
-F = 270
+# W, H = 848, 480
+F = int(os.getenv("F", "800"))
+# F = 612
 # Recovering Focal Length from Fundamental Matrix:
 # ------------------------------------------------
 # - The fundamental matrix (F) relates pixel coordinates between two images.
@@ -26,8 +28,15 @@ Kinv = np.linalg.inv(K)
 
 # main classes
 mapp = Map()
-disp = Display(W, H) if os.getenv("D2D") is not None else None
+# if os.getenv("D3D") is not None:
+#   print("hello display")
+mapp.create_viewer()
+# disp = None
+# if os.getenv("D2D") is not None:
+#   print("hello display")
+disp = Display(W, H)
 
+#https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_7_2-triangulation.pdf
 def triangulate(pose1, pose2, pts1, pts2):
   ret = np.zeros((pts1.shape[0], 4))
   pose1 = np.linalg.inv(pose1)
@@ -84,7 +93,11 @@ def process_frame(img):
   mapp.display()
 
 if __name__ == "__main__":
-  cap = cv2.VideoCapture("test/test_countryroad.mp4")
+  if len(sys.argv) < 2:
+    print("%s <video.mp4>" % sys.argv[0])
+    exit(-1)
+    
+  cap = cv2.VideoCapture(sys.argv[1])
 
   while cap.isOpened():
     ret, frame = cap.read()
